@@ -19,6 +19,7 @@ func main() {
 	http.HandleFunc("/welcome", handlers.WelcomeHandler)
 	http.HandleFunc("/worker/", handlers.WorkerProfileHandler)
 	http.HandleFunc("/calendar", handlers.CalendarHandler)
+	http.HandleFunc("/week", handlers.WeekWorkersHandler)
 	http.HandleFunc("/logout", handlers.LogoutHandler)
 
 	log.Println("Listening on :8080...")
