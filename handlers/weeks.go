@@ -30,39 +30,43 @@ func WeekWorkersHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Convierte el ID de la semana a un entero y maneja posibles errores
-	weekNumber, err := strconv.Atoi(weekID)
-	if err != nil {
-		http.Error(w, "Invalid week number in week ID", http.StatusBadRequest)
+	// Obtiene la lista de semanas del año
+	weeks := models.GetWeeksOfYear(year)
+
+	// Encuentra la semana correspondiente al weekID
+	var selectedWeek models.Week
+	for _, week := range weeks {
+		if week.WeekID == weekID {
+			selectedWeek = week
+			break
+		}
+	}
+
+	if selectedWeek.WeekID == "" {
+		http.Error(w, "Week not found", http.StatusNotFound)
 		return
 	}
 
 	// Obtiene la lista de trabajadores desde la base de datos
 	workers, err := models.GetWorkers()
-
 	if err != nil {
 		http.Error(w, "Unable to retrieve workers", http.StatusInternalServerError)
 		return
 	}
 
-	// Calcula las fechas de inicio y fin de la semana basada en el número de semana y año
-	startOfYear := time.Date(year, time.January, 1, 0, 0, 0, 0, time.UTC)
-	startOfWeek := startOfYear.AddDate(0, 0, (weekNumber-1)*7)
-	for startOfWeek.Weekday() != time.Monday {
-		startOfWeek = startOfWeek.AddDate(0, 0, -1)
-	}
-	endOfWeek := startOfWeek.AddDate(0, 0, 6)
-
 	// Define los días de la semana
 	days := []string{"Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"}
 	var weekSchedule []models.DaySchedule
+
+	// Convierte las fechas de string a time.Time
+	startOfWeek, _ := time.Parse("2006-01-02", selectedWeek.StartDate)
 
 	// Crea el horario semanal
 	for i, day := range days {
 		date := startOfWeek.AddDate(0, 0, i)
 		weekSchedule = append(weekSchedule, models.DaySchedule{
 			Day:     day,
-			Date:    utils.FormatDate(date),
+			Date:    utils.FormatDate(date), // Asegúrate de que utils.FormatDate formatea correctamente la fecha
 			Workers: workers,
 		})
 	}
@@ -77,8 +81,8 @@ func WeekWorkersHandler(w http.ResponseWriter, r *http.Request) {
 	}{
 		WeekID:       weekID,
 		Year:         yearStr,
-		StartDate:    utils.FormatDate(startOfWeek),
-		EndDate:      utils.FormatDate(endOfWeek),
+		StartDate:    selectedWeek.StartDate,
+		EndDate:      selectedWeek.EndDate,
 		WeekSchedule: weekSchedule,
 	}
 
