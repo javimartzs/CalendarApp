@@ -77,12 +77,12 @@
                             <button class="btn btn-purple" onclick="changeColor('rgb(230, 204, 255)', 'day-off')">Dia Libre</button>
                             <button class="btn btn-light" onclick="changeColor('white', 'none')">Nada</button>
                         </div>
-                
                     </tbody>
                 </table>
             </div>
         </div>
         {{end}}
+
         <!-- Tabla Resumen -->
         <div class="table-responsive center-table">
             <table id="summary-table" class="table table-bordered mt-5">
@@ -152,6 +152,8 @@
             allRows.forEach(row => {
                 updateTotal(row);
             });
+
+            saveTableStateToServer(); // Guardar cambios después de aplicar "Borrar todo"
         }
 
         function changeColor(color, className) {
@@ -167,8 +169,8 @@
             });
 
             selectedCells = [];
-            updateSummaryTable(getSummaryData());
             saveTableStateToServer();  // Guardar cambios después de aplicar el color
+            updateSummaryTable(); // Actualizar tabla resumen después de aplicar el color
         }
 
         function updateTotal(row) {
@@ -205,7 +207,7 @@
                 tableData[tableId] = data;
             });
 
-            const summaryData = getSummaryData(); // Obtener datos de la tabla resumen
+            const summaryData = getSummaryData();
 
             const response = await fetch(`/saveTableState`, {
                 method: 'POST',
@@ -226,13 +228,10 @@
             const response = await fetch(`/loadTableState?weekID=${weekID}&year=${year}`);
             if (response.ok) {
                 const tableData = await response.json();
-                const data = tableData.data;
-                const summary = tableData.summary;
-
-                Object.keys(data).forEach(tableId => {
+                Object.keys(tableData.data).forEach(tableId => {
                     let table = document.getElementById(tableId);
                     if (table) {
-                        data[tableId].forEach((rowData, rowIndex) => {
+                        tableData.data[tableId].forEach((rowData, rowIndex) => {
                             let row = table.rows[rowIndex];
                             rowData.forEach((cellData, cellIndex) => {
                                 let cell = row.cells[cellIndex];
@@ -245,9 +244,8 @@
                         });
                     }
                 });
-
-                updateSummaryTable(summary); // Actualizar tabla resumen después de cargar los datos
                 console.log('Data loaded successfully');
+                updateSummaryTable(); // Actualizar tabla resumen después de cargar los datos
             } else {
                 console.error('Error loading data');
             }
@@ -255,31 +253,35 @@
 
         async function resetWeekData() {
             const response = await fetch(`/resetTableState?weekID=${weekID}&year=${year}`, {
-                method: 'POST'
-            });
-
-            if (response.ok) {
-                window.location.reload();
-            } else {
-                console.error('Error resetting data');
-            }
-        }
-
-        async function updateWorkers(workers) {
-            const response = await fetch(`/updateWorkers`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ weekID, year, workers })
             });
 
             if (response.ok) {
-                console.log('Workers updated successfully');
+                console.log('Week data reset successfully');
+                // Limpiar todas las celdas coloreadas
+                document.querySelectorAll('td.editable-cell').forEach(cell => {
+                    cell.style.backgroundColor = 'white';
+                    cell.textContent = '';
+                    cell.classList.remove('selected', 'work', 'day-off', 'none');
+                    cell.classList.add('none');
+                });
+
+                // Actualizar las filas
+                const allRows = document.querySelectorAll('table[id^="table-"] tbody tr');
+                allRows.forEach(row => {
+                    updateTotal(row);
+                });
+
+                // Actualizar la tabla resumen
+                updateSummaryTable();
+
+                // Redirigir al usuario a la página de bienvenida
+                window.location.href = '/welcome';
             } else {
-                console.error('Error updating workers');
+                console.error('Error resetting week data');
             }
         }
+
 
         function getSummaryData() {
             const workerTotals = {};
@@ -298,25 +300,19 @@
             return workerTotals;
         }
 
-        function updateSummaryTable(summaryData) {
+        function updateSummaryTable() {
             const summaryTableBody = document.querySelector('#summary-table tbody');
             summaryTableBody.innerHTML = '';
 
-            Object.keys(summaryData).forEach(workerName => {
+            const workerTotals = getSummaryData();
+
+            Object.keys(workerTotals).forEach(workerName => {
                 const newRow = document.createElement('tr');
                 const nameCell = document.createElement('td');
                 const totalCell = document.createElement('td');
-                const totalHours = summaryData[workerName];
-
                 nameCell.innerText = workerName;
-                totalCell.innerText = totalHours.toFixed(1);
-
-                if (totalHours > 40) {
-                    totalCell.style.backgroundColor = 'red';
-                } else {
-                    totalCell.style.backgroundColor = 'green';
-                }
-
+                totalCell.innerText = workerTotals[workerName].toFixed(1);
+                totalCell.style.color = workerTotals[workerName] > 40 ? 'red' : 'green';
                 newRow.appendChild(nameCell);
                 newRow.appendChild(totalCell);
                 summaryTableBody.appendChild(newRow);
@@ -343,10 +339,8 @@
 
             // Update summary table after any changes
             document.querySelectorAll('.editable-cell').forEach(cell => {
-                cell.addEventListener('input', () => {
-                    updateTotal(cell.closest('tr'));
-                    updateSummaryTable(getSummaryData());
-                });
+                cell.addEventListener('change', updateSummaryTable);
+                cell.addEventListener('input', updateSummaryTable);
             });
         });
     </script>

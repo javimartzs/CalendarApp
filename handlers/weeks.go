@@ -159,13 +159,30 @@ func UpdateWorkersHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func ResetTableStateHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+		return
+	}
+
 	weekID := r.URL.Query().Get("weekID")
 	year := r.URL.Query().Get("year")
 
+	if weekID == "" || year == "" {
+		http.Error(w, "Missing weekID or year", http.StatusBadRequest)
+		return
+	}
+
 	fileName := filepath.Join(dataDir, weekID+"_"+year+".json")
+	log.Printf("Attempting to delete file: %s", fileName) // Log to verify the file path
+
 	err := os.Remove(fileName)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		if os.IsNotExist(err) {
+			http.Error(w, "File not found", http.StatusNotFound)
+		} else {
+			log.Printf("Error deleting file: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 		return
 	}
 

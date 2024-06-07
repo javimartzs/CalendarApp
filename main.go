@@ -24,7 +24,6 @@ func main() {
 
 	http.HandleFunc("/saveTableState", handlers.SaveTableStateHandler)
 	http.HandleFunc("/loadTableState", handlers.LoadTableStateHandler)
-	http.HandleFunc("/updateWorkers", handlers.UpdateWorkersHandler)
 	http.HandleFunc("/resetTableState", handlers.ResetTableStateHandler)
 
 	log.Println("Listening on :8080...")
