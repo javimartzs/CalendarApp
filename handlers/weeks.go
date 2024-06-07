@@ -3,10 +3,174 @@ package handlers
 import (
 	"CalendarApp/models"
 	"CalendarApp/utils"
+	"encoding/json"
+	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 )
+
+const dataDir = "data"
+
+func init() {
+	if _, err := os.Stat(dataDir); os.IsNotExist(err) {
+		err := os.Mkdir(dataDir, 0755)
+		if err != nil {
+			log.Fatalf("Error creating data directory: %v", err)
+		}
+	}
+}
+
+func saveTableDataToFile(weekID, year string, data map[string]interface{}) error {
+	fileName := filepath.Join(dataDir, weekID+"_"+year+".json")
+	dataJSON, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(fileName, dataJSON, 0644)
+}
+
+func loadTableDataFromFile(weekID, year string) (map[string]interface{}, error) {
+	fileName := filepath.Join(dataDir, weekID+"_"+year+".json")
+	dataJSON, err := os.ReadFile(fileName)
+	if err != nil {
+		return nil, err
+	}
+	var data map[string]interface{}
+	if err := json.Unmarshal(dataJSON, &data); err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+func deleteFutureTableFiles(currentDate time.Time) error {
+	files, err := os.ReadDir(dataDir)
+	if err != nil {
+		return err
+	}
+
+	for _, file := range files {
+		if strings.HasSuffix(file.Name(), ".json") {
+			parts := strings.Split(file.Name(), "_")
+			if len(parts) >= 2 {
+				weekID := parts[0]
+				weekStartDate, err := time.Parse("2006-01-02", weekID)
+				if err != nil {
+					continue
+				}
+
+				if weekStartDate.After(currentDate) {
+					err = os.Remove(filepath.Join(dataDir, file.Name()))
+					if err != nil {
+						log.Printf("Error deleting file %s: %v", file.Name(), err)
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func SaveTableStateHandler(w http.ResponseWriter, r *http.Request) {
+	var tableData struct {
+		WeekID  string                 `json:"weekID"`
+		Year    string                 `json:"year"`
+		Data    map[string]interface{} `json:"data"`
+		Summary map[string]float64     `json:"summary"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&tableData); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	err := saveTableDataToFile(tableData.WeekID, tableData.Year, map[string]interface{}{
+		"data":    tableData.Data,
+		"summary": tableData.Summary,
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func LoadTableStateHandler(w http.ResponseWriter, r *http.Request) {
+	weekID := r.URL.Query().Get("weekID")
+	year := r.URL.Query().Get("year")
+
+	data, err := loadTableDataFromFile(weekID, year)
+	if err != nil {
+		if os.IsNotExist(err) {
+			http.Error(w, "No data found", http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(data)
+}
+
+// New endpoint to handle worker changes
+func UpdateWorkersHandler(w http.ResponseWriter, r *http.Request) {
+	var workerData struct {
+		WeekID  string          `json:"weekID"`
+		Year    string          `json:"year"`
+		Workers []models.Worker `json:"workers"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&workerData); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	data, err := loadTableDataFromFile(workerData.WeekID, workerData.Year)
+	if err != nil {
+		if os.IsNotExist(err) {
+			data = make(map[string]interface{})
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	data["workers"] = workerData.Workers
+
+	err = saveTableDataToFile(workerData.WeekID, workerData.Year, data)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Delete future table files
+	currentDate := time.Now()
+	err = deleteFutureTableFiles(currentDate)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func ResetTableStateHandler(w http.ResponseWriter, r *http.Request) {
+	weekID := r.URL.Query().Get("weekID")
+	year := r.URL.Query().Get("year")
+
+	fileName := filepath.Join(dataDir, weekID+"_"+year+".json")
+	err := os.Remove(fileName)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
 
 func WeekWorkersHandler(w http.ResponseWriter, r *http.Request) {
 	// Verifica si el usuario está logueado

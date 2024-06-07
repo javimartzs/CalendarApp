@@ -13,7 +13,9 @@
         .btn-orange { background-color: #ffd9b3; color: black; } /* Pastel orange */
         .btn-pink { background-color: #ffdfbf; color: black; } /* Pastel pink */
         .btn-yellow { background-color: #ffffcc; color: black; } /* Pastel yellow */
-        .btn-purple { background-color: rgb(230, 204, 255); color: black; } /* Pastel purple */    
+        .btn-purple { background-color: rgb(230, 204, 255); color: black; } /* Pastel purple */
+        .btn-primary { margin-left: 0.5rem; }
+        .center-table { margin: 0 auto; width: 50%; }
     </style>
 </head>
 <body class="d-flex flex-column min-vh-100">
@@ -24,11 +26,12 @@
     <div class="container-fluid my-4 flex-grow-1">
         <div class="container-fluid my-4 flex-grow-1">
             <div class="d-flex justify-content-between align-items-end mb-3">
-                <h2 class="mb-0">Semana de {{.StartDate}} a {{.EndDate}}</h2>
+                <h2 class="mb-0">Semana de <span id="startDate">{{.StartDate}}</span> a <span id="endDate">{{.EndDate}}</span></h2>
                 <a href="/calendar" class="btn btn-secondary">Volver al Calendario</a>
             </div>
             <div class="d-flex justify-content-end">
-                <button class="btn btn-danger">Borrar todo</button>
+                <button class="btn btn-danger" onclick="resetWeekData()">Borrar todo</button>
+                <button class="btn btn-primary ms-2" onclick="window.location.reload()">Recargar Página</button>
             </div>
         </div>
 
@@ -73,92 +76,279 @@
                             <button class="btn btn-yellow" onclick="changeColor('#ffffcc', 'work')">Av. de Oza</button>
                             <button class="btn btn-purple" onclick="changeColor('rgb(230, 204, 255)', 'day-off')">Dia Libre</button>
                             <button class="btn btn-light" onclick="changeColor('white', 'none')">Nada</button>
-                        </div>  
+                        </div>
+                
                     </tbody>
                 </table>
             </div>
         </div>
         {{end}}
+        <!-- Tabla Resumen -->
+        <div class="table-responsive center-table">
+            <table id="summary-table" class="table table-bordered mt-5">
+                <thead class="text-center">
+                    <tr>
+                        <th>Trabajador</th>
+                        <th>Total de Horas Semanales</th>
+                    </tr>
+                </thead>
+                <tbody class="text-center">
+                    <!-- Aquí se llenará dinámicamente -->
+                </tbody>
+            </table>
+        </div>
     </div>
     <footer class="w-100 bg-primary mt-5 p-3">
         <h5 class="text-center text-white fst-italic">Amasarte 2024 - Todos los derechos reservados</h5>
     </footer>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.14.0/Sortable.min.js"></script>
 
     <script>
-    
-    // Variables para la seleccion de celdas
-    let selectedCells = [];
-let isSelecting = false;
+        let selectedCells = [];
+        let isSelecting = false;
 
-function startSelecting(event) {
-    isSelecting = true;
-    selectCell(event);
-    document.addEventListener('mouseup', stopSelecting);
-}
+        // Obtener weekID y year desde variables pasadas por el servidor
+        const weekID = "{{.WeekID}}"; // Supone que pasas el weekID desde tu backend
+        const year = "{{.Year}}"; // Supone que pasas el year desde tu backend
 
-function stopSelecting() {
-    isSelecting = false;
-    document.removeEventListener('mouseup', stopSelecting);
-}
+        function startSelecting(event) {
+            isSelecting = true;
+            selectCell(event);
+            document.addEventListener('mouseup', stopSelecting);
+        }
 
-function selectCell(event) {
-    if (isSelecting) {
-        const cell = event.target;
-        if (!selectedCells.includes(cell)) {
-            // Si la celda no está en la lista de celdas seleccionadas, la añadimos
-            selectedCells.push(cell);
-            cell.classList.add('selected');
-        } else {
-            // Si la celda ya está en la lista de celdas seleccionadas, la eliminamos
-            const index = selectedCells.indexOf(cell);
-            if (index > -1) {
-                selectedCells.splice(index, 1);
-                cell.classList.remove('selected');
+        function stopSelecting() {
+            isSelecting = false;
+            document.removeEventListener('mouseup', stopSelecting);
+        }
+
+        function selectCell(event) {
+            if (isSelecting) {
+                const cell = event.target;
+                if (!selectedCells.includes(cell)) {
+                    selectedCells.push(cell);
+                    cell.classList.add('selected');
+                } else {
+                    const index = selectedCells.indexOf(cell);
+                    if (index > -1) {
+                        selectedCells.splice(index, 1);
+                        cell.classList.remove('selected');
+                    }
+                }
             }
         }
-    }
-}
 
+        function selectAllCells() {
+            document.querySelectorAll('td.editable-cell').forEach(cell => {
+                cell.style.backgroundColor = 'white';
+                cell.textContent = '';
+                cell.classList.remove('selected', 'work', 'day-off', 'none');
+                cell.classList.add('none');
+            });
 
-function changeColor(color, className) {
-    selectedCells.forEach(cell => {
-        // Cambiar el color y actualizar la clase
-        cell.style.backgroundColor = color;
-        cell.classList.remove('selected', 'work', 'day-off', 'none');
-        cell.classList.add(className);
-    });
+            const allRows = document.querySelectorAll('table[id^="table-"] tbody tr');
+            allRows.forEach(row => {
+                updateTotal(row);
+            });
+        }
 
-    // Actualizar los totales de todas las filas afectadas
-    const allRows = document.querySelectorAll('table tbody tr');
-    allRows.forEach(row => {
-        updateTotal(row);
-    });
+        function changeColor(color, className) {
+            selectedCells.forEach(cell => {
+                cell.style.backgroundColor = color;
+                cell.classList.remove('selected', 'work', 'day-off', 'none');
+                cell.classList.add(className);
+            });
 
-    // Limpiar lista de celdas seleccionadas después de aplicar el color
-    selectedCells = [];
+            const allRows = document.querySelectorAll('table[id^="table-"] tbody tr');
+            allRows.forEach(row => {
+                updateTotal(row);
+            });
 
-    // Guardar los datos en el servidor
-    saveTableStateToServer();
-}
+            selectedCells = [];
+            updateSummaryTable(getSummaryData());
+            saveTableStateToServer();  // Guardar cambios después de aplicar el color
+        }
 
-function updateTotal(row) {
-    const cells = row.querySelectorAll('td.editable-cell');
-    let total = 0;
-    cells.forEach(cell => {
-        const color = cell.style.backgroundColor;
-        if (color !== 'white' && color !== '') {
-            if (color !== 'rgb(230, 204, 255)') { // No contar si es day-off (purple)
-                total += 0.5; // Añadir 0.5 al total por cada celda coloreada
+        function updateTotal(row) {
+            const cells = row.querySelectorAll('td.editable-cell');
+            let total = 0;
+            cells.forEach(cell => {
+                const color = cell.style.backgroundColor;
+                if (color !== 'white' && color !== '') {
+                    if (color !== 'rgb(230, 204, 255)') {
+                        total += 0.5;
+                    }
+                }
+            });
+            const totalCell = row.querySelector('td.total-cell');
+            totalCell.textContent = total;
+        }
+
+        async function saveTableStateToServer() {
+            let tableData = {};
+            document.querySelectorAll('table[id^="table-"]').forEach(table => {
+                let tableId = table.id;
+                let data = [];
+                table.querySelectorAll('tr').forEach(row => {
+                    let rowData = [];
+                    row.querySelectorAll('td').forEach(cell => {
+                        rowData.push({
+                            content: cell.innerHTML,
+                            selected: cell.classList.contains('selected'),
+                            backgroundColor: cell.style.backgroundColor
+                        });
+                    });
+                    data.push(rowData);
+                });
+                tableData[tableId] = data;
+            });
+
+            const summaryData = getSummaryData(); // Obtener datos de la tabla resumen
+
+            const response = await fetch(`/saveTableState`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ weekID, year, data: tableData, summary: summaryData })
+            });
+
+            if (response.ok) {
+                console.log('Data saved successfully');
+            } else {
+                console.error('Error saving data');
             }
         }
-    });
-    const totalCell = row.querySelector('td.total-cell');
-    totalCell.textContent = total;
-}
-    
 
+        async function loadTableState() {
+            const response = await fetch(`/loadTableState?weekID=${weekID}&year=${year}`);
+            if (response.ok) {
+                const tableData = await response.json();
+                const data = tableData.data;
+                const summary = tableData.summary;
+
+                Object.keys(data).forEach(tableId => {
+                    let table = document.getElementById(tableId);
+                    if (table) {
+                        data[tableId].forEach((rowData, rowIndex) => {
+                            let row = table.rows[rowIndex];
+                            rowData.forEach((cellData, cellIndex) => {
+                                let cell = row.cells[cellIndex];
+                                cell.innerHTML = cellData.content;
+                                if (cellData.selected) {
+                                    cell.classList.add('selected');
+                                }
+                                cell.style.backgroundColor = cellData.backgroundColor;
+                            });
+                        });
+                    }
+                });
+
+                updateSummaryTable(summary); // Actualizar tabla resumen después de cargar los datos
+                console.log('Data loaded successfully');
+            } else {
+                console.error('Error loading data');
+            }
+        }
+
+        async function resetWeekData() {
+            const response = await fetch(`/resetTableState?weekID=${weekID}&year=${year}`, {
+                method: 'POST'
+            });
+
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                console.error('Error resetting data');
+            }
+        }
+
+        async function updateWorkers(workers) {
+            const response = await fetch(`/updateWorkers`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ weekID, year, workers })
+            });
+
+            if (response.ok) {
+                console.log('Workers updated successfully');
+            } else {
+                console.error('Error updating workers');
+            }
+        }
+
+        function getSummaryData() {
+            const workerTotals = {};
+
+            document.querySelectorAll('table[id^="table-"]').forEach(table => {
+                table.querySelectorAll('tbody tr').forEach(row => {
+                    const workerName = row.querySelector('td a').innerText;
+                    const totalHours = parseFloat(row.querySelector('td.total-cell').innerText);
+                    if (!workerTotals[workerName]) {
+                        workerTotals[workerName] = 0;
+                    }
+                    workerTotals[workerName] += totalHours;
+                });
+            });
+
+            return workerTotals;
+        }
+
+        function updateSummaryTable(summaryData) {
+            const summaryTableBody = document.querySelector('#summary-table tbody');
+            summaryTableBody.innerHTML = '';
+
+            Object.keys(summaryData).forEach(workerName => {
+                const newRow = document.createElement('tr');
+                const nameCell = document.createElement('td');
+                const totalCell = document.createElement('td');
+                const totalHours = summaryData[workerName];
+
+                nameCell.innerText = workerName;
+                totalCell.innerText = totalHours.toFixed(1);
+
+                if (totalHours > 40) {
+                    totalCell.style.backgroundColor = 'red';
+                } else {
+                    totalCell.style.backgroundColor = 'green';
+                }
+
+                newRow.appendChild(nameCell);
+                newRow.appendChild(totalCell);
+                summaryTableBody.appendChild(newRow);
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadTableState();
+
+            document.querySelectorAll('table[id^="table-"] tbody').forEach(tbody => {
+                new Sortable(tbody, {
+                    handle: '.text-nowrap',
+                    animation: 150,
+                    onEnd: function () {
+                        console.log('Row order changed');
+                    }
+                });
+            });
+
+            document.querySelector('.btn-danger').addEventListener('click', selectAllCells);
+
+            // Save the table state before the page unloads
+            window.addEventListener('beforeunload', saveTableStateToServer);
+
+            // Update summary table after any changes
+            document.querySelectorAll('.editable-cell').forEach(cell => {
+                cell.addEventListener('input', () => {
+                    updateTotal(cell.closest('tr'));
+                    updateSummaryTable(getSummaryData());
+                });
+            });
+        });
     </script>
-
 </body>
 </html>
